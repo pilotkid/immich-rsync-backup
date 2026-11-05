@@ -9,7 +9,7 @@ A small, **provider-agnostic** Docker image for backing up Immich's original med
 - No automatic remote deletion; destructive rsync flags are explicitly rejected.
 - `append` mode never overwrites existing remote files on standard rsync servers.
 - Secrets are **mounted at runtime**, never baked into the image.
-- Builds locally or publishes to GHCR via the included GitHub Actions workflow.
+- Builds locally; the intended Docker Hub image is `pilotkid/immich-rsync-backup`.
 
 > **Important:** An SFTP connection configured in rclone is *not* the same thing as an rsync connection. You must configure `RSYNC_DESTINATION` separately, even if `rclone lsd myremote:` works. Not all SFTP-only servers support rsync.
 
@@ -21,7 +21,13 @@ From this repository:
 docker build -t immich-rsync-backup:local .
 ```
 
-Or push this repository to GitHub (branch `main`) and GitHub Actions will publish `ghcr.io/YOUR_USER/YOUR_REPO:latest`. Change `BACKUP_IMAGE` in your Immich `.env` to use it. Set the GHCR image visibility and credentials as needed for your deployment.
+The published Docker Hub image is `pilotkid/immich-rsync-backup`. After the image has been published, set `BACKUP_IMAGE` in your Immich `.env` to `pilotkid/immich-rsync-backup:latest` and pull it on the server:
+
+```powershell
+docker pull pilotkid/immich-rsync-backup:latest
+```
+
+The included GitHub Actions workflow currently publishes to GHCR. It must be switched to Docker Hub before pushing this repository will publish `pilotkid/immich-rsync-backup` automatically. Until then, build and push the image manually or keep using the local image built above.
 
 ## 2. Configure your Immich stack
 
