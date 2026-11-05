@@ -1,0 +1,119 @@
+# Full-stack example based on the user's Immich Compose configuration.
+# Copy .env.example to .env and edit it before starting the stack.
+name: immich
+
+services:
+  immich-server:
+    container_name: immich_server
+    image: ghcr.io/immich-app/immich-server:${IMMICH_VERSION:-release}
+    # Uncomment for hardware accelerated transcoding and choose a service from
+    # the matching Immich hwaccel.transcoding.yml release file.
+    # extends:
+    #   file: hwaccel.transcoding.yml
+    #   service: cpu
+    volumes:
+      - ${UPLOAD_LOCATION}:/data
+      - /etc/localtime:/etc/localtime:ro
+    env_file:
+      - .env
+    ports:
+      - '2283:2283'
+    depends_on:
+      - redis
+      - database
+    restart: always
+    healthcheck:
+      disable: false
+    networks:
+      - proxy-network
+
+  immich-machine-learning:
+    container_name: immich_machine_learning
+    image: ghcr.io/immich-app/immich-machine-learning:${IMMICH_VERSION:-release}
+    # For hardware acceleration, use the matching Immich ML image tag and
+    # hwaccel.ml.yml service from the same Immich release.
+    # extends:
+    #   file: hwaccel.ml.yml
+    #   service: cpu
+    volumes:
+      - model-cache:/cache
+    env_file:
+      - .env
+    restart: always
+    healthcheck:
+      disable: false
+    networks:
+      - proxy-network
+
+  redis:
+    container_name: immich_redis
+    image: docker.io/valkey/valkey:9@sha256:fb8d272e529ea567b9bf1302245796f21a2672b8368ca3fcb938ac334e613c8f
+    healthcheck:
+      test: redis-cli ping || exit 1
+    restart: always
+    networks:
+      - proxy-network
+
+  database:
+    container_name: immich_postgres
+    image: ghcr.io/immich-app/postgres:14-vectorchord0.4.3-pgvectors0.2.0@sha256:bcf63357191b76a916ae5eb93464d65c07511da41e3bf7a8416db519b40b1c23
+    environment:
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_USER: ${DB_USERNAME}
+      POSTGRES_DB: ${DB_DATABASE_NAME}
+      POSTGRES_INITDB_ARGS: '--data-checksums'
+      # Set to HDD if your database is stored on a hard drive.
+      # DB_STORAGE_TYPE: HDD
+    volumes:
+      - ${DB_DATA_LOCATION}:/var/lib/postgresql/data
+    shm_size: 128mb
+    restart: always
+    networks:
+      - proxy-network
+
+  immich-rsync-backup:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    image: immich-rsync-backup:local
+    environment:
+      TZ: ${TZ:-America/Denver}
+      RSYNC_DESTINATION: ${RSYNC_DESTINATION:?Set RSYNC_DESTINATION in .env}
+      RSYNC_PROFILE: ${RSYNC_PROFILE:-standard}
+      BACKUP_MODE: ${BACKUP_MODE:-append}
+      MEDIA_ROOT: ${MEDIA_ROOT:-/data}
+      BACKUP_TIME: ${BACKUP_TIME:-03:00}
+      RUN_ON_START: ${RUN_ON_START:-false}
+      SOURCE_DIRS: ${SOURCE_DIRS:-upload library profile backups}
+      REQUIRE_DB_BACKUP: ${REQUIRE_DB_BACKUP:-true}
+      DB_BACKUP_MAX_AGE_HOURS: ${DB_BACKUP_MAX_AGE_HOURS:-48}
+      TRIGGER_DB_BACKUP: ${TRIGGER_DB_BACKUP:-true}
+      IMMICH_API_URL: ${IMMICH_API_URL:-http://immich-server:2283/api}
+      IMMICH_API_KEY_FILE: /run/rsync-secrets/immich-api-key
+      DB_BACKUP_TRIGGER_TIMEOUT_SECONDS: ${DB_BACKUP_TRIGGER_TIMEOUT_SECONDS:-1800}
+      SSH_PORT: ${SSH_PORT:-22}
+      SSH_IDENTITY_FILE: ${SSH_IDENTITY_FILE:-/config/id_ed25519}
+      RSYNC_SSH_PASSWORD_FILE: ${RSYNC_SSH_PASSWORD_FILE:-}
+      RSYNC_DAEMON_PASSWORD_FILE: ${RSYNC_DAEMON_PASSWORD_FILE:-}
+      RSYNC_OPTIONS_FILE: ${RSYNC_OPTIONS_FILE:-}
+      RSYNC_RSH: ${RSYNC_RSH:-}
+      DRY_RUN: ${DRY_RUN:-false}
+    volumes:
+      - ${UPLOAD_LOCATION}:/data:ro
+      - ./backup-config:/config:ro
+      - ./backup-secrets:/run/rsync-secrets:ro
+    depends_on:
+      - immich-server
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    init: true
+    networks:
+      - proxy-network
+
+volumes:
+  model-cache:
+
+networks:
+  proxy-network:
+    external: true

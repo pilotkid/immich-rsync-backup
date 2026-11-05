@@ -1,0 +1,8 @@
+.git
+.github
+.env
+.env.*
+backup-config
+backup-secrets
+*.log
+*.zip

@@ -1,0 +1,10 @@
+.env
+.env.*
+!.env.example
+backup-config/*
+!backup-config/.gitkeep
+backup-secrets/*
+!backup-secrets/.gitkeep
+*.log
+*.zip
+.DS_Store
