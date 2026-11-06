@@ -13,12 +13,17 @@ root="${MEDIA_ROOT:-/data}"
 if [[ "${TRIGGER_DB_BACKUP:-false}" == true ]]; then
   [[ "${REQUIRE_DB_BACKUP:-true}" == true ]] || die 'TRIGGER_DB_BACKUP=true requires REQUIRE_DB_BACKUP=true.'
   api_url="${IMMICH_API_URL:-}"
+  api_key="${IMMICH_API_KEY:-}"
   api_key_file="${IMMICH_API_KEY_FILE:-}"
   [[ -n "$api_url" ]] || die 'Set IMMICH_API_URL when TRIGGER_DB_BACKUP=true.'
-  [[ -n "$api_key_file" && -r "$api_key_file" ]] || die 'Set IMMICH_API_KEY_FILE to a readable mounted API key file.'
+  [[ -n "$api_key" || -n "$api_key_file" ]] || die 'Set IMMICH_API_KEY or IMMICH_API_KEY_FILE when TRIGGER_DB_BACKUP=true.'
+  [[ -z "$api_key" || -z "$api_key_file" ]] || die 'Set only one of IMMICH_API_KEY or IMMICH_API_KEY_FILE.'
+  if [[ -n "$api_key_file" ]]; then
+    [[ -r "$api_key_file" ]] || die "Immich API key file is not readable: $api_key_file"
+    api_key="$(<"$api_key_file")"
+  fi
   [[ "${DB_BACKUP_TRIGGER_TIMEOUT_SECONDS:-1800}" =~ ^[0-9]+$ && "${DB_BACKUP_TRIGGER_TIMEOUT_SECONDS:-1800}" -gt 0 ]] || die 'DB_BACKUP_TRIGGER_TIMEOUT_SECONDS must be a positive integer.'
-  api_key="$(<"$api_key_file")"
-  [[ -n "$api_key" ]] || die 'Immich API key file is empty.'
+  [[ -n "$api_key" ]] || die 'Immich API key is empty.'
   [[ -d "$root/backups" ]] || die "Immich database dumps directory missing: $root/backups"
 
   api_header_file="$(mktemp /tmp/immich-api-header.XXXXXX)"

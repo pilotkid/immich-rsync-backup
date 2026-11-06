@@ -5,10 +5,10 @@ A small, **provider-agnostic** Docker image for backing up Immich's original med
 - Source media mounted **read-only**; does not mount live PostgreSQL data.
 - Scheduled daily uploads, with an optional immediate run.
 - Two rsync profiles: `standard` and `custom`.
-- Works with rsync-over-SSH (SSH key or a mounted password file), rsync daemon/module, or local filesystem destinations.
+- Works with rsync-over-SSH (SSH key or password), rsync daemon/module, or local filesystem destinations.
 - No automatic remote deletion; destructive rsync flags are explicitly rejected.
 - `append` mode never overwrites existing remote files on standard rsync servers.
-- Secrets are **mounted at runtime**, never baked into the image.
+- Credentials are never baked into the image. API and SSH password credentials can be mounted from files or supplied as environment variables.
 - Builds locally; the intended Docker Hub image is `pilotkid/immich-rsync-backup`.
 
 > **Important:** An SFTP connection configured in rclone is *not* the same thing as an rsync connection. You must configure `RSYNC_DESTINATION` separately, even if `rclone lsd myremote:` works. Not all SFTP-only servers support rsync.
@@ -66,6 +66,8 @@ Use an EC2 instance in `us-east-1` (N. Virginia) with rsync installed and the re
 ```ini
 RSYNC_SSH_PASSWORD_FILE=/run/rsync-secrets/password
 ```
+
+Alternatively, set `RSYNC_SSH_PASSWORD` directly in the Compose `.env` and leave `RSYNC_SSH_PASSWORD_FILE` empty. Leave `SSH_IDENTITY_FILE` empty when using password-only authentication. Environment values are visible to Docker administrators through container inspection; use the mounted-file option when you want to avoid storing the password in the container environment. Configure only one of `RSYNC_SSH_PASSWORD` and `RSYNC_SSH_PASSWORD_FILE`.
 
 To collect a host-key candidate from PowerShell, use `ssh-keyscan` if available, **but independently verify the fingerprint with your provider** before trusting or adding it to `known_hosts`. Unknown SSH hosts are rejected by default.
 
@@ -127,7 +129,7 @@ The sidecar can ask Immich to create a new dump before every scheduled or manual
 
 1. In Immich, create an API key for an administrator account with permission to create jobs.
 2. Make sure the sidecar and Immich server share a Docker network. With the provided full-stack example, use `IMMICH_API_URL=http://immich-server:2283/api`; for a split stack, use an API URL reachable from the sidecar container.
-3. Save the API key in a file mounted into the sidecar. With the standard Compose override, create `backup-secrets/immich-api-key` and keep `IMMICH_API_KEY_FILE=/run/rsync-secrets/immich-api-key`. In the full-stack example this path and mount are already configured.
+3. Provide the API key either in a file mounted into the sidecar or as an environment variable. For the file option, create `backup-secrets/immich-api-key` and set `IMMICH_API_KEY_FILE=/run/rsync-secrets/immich-api-key`. For the environment option, set `IMMICH_API_KEY` in `.env` and leave `IMMICH_API_KEY_FILE` empty. Configure only one. Environment values are visible to Docker administrators through container inspection, so the mounted-file option is preferred for the API key.
 4. Set `TRIGGER_DB_BACKUP=true` and keep `REQUIRE_DB_BACKUP=true`. Set `DB_BACKUP_TRIGGER_TIMEOUT_SECONDS` high enough for the dump to complete; the default is 1800 seconds (30 minutes).
 5. Recreate the sidecar container. Start with one manual run and inspect its logs before relying on the daily schedule.
 
@@ -154,6 +156,13 @@ docker compose -f docker-compose.yml -f compose.sidecar.yml up -d immich-rsync-b
 ```
 
 Each run submits Immich's `backup-database` job, waits for a new dump file to stop changing, then starts rsync. If Immich rejects the request or a completed dump does not appear before the timeout, that run stops without uploading. This uses Immich's current `POST /api/jobs` endpoint and may need updating if Immich changes that API.
+
+To use an environment variable for the API key instead of the file setting shown above, use:
+
+```ini
+IMMICH_API_KEY=<your-immich-api-key>
+IMMICH_API_KEY_FILE=
+```
 
 By default this transfers `upload`, `library`, `profile` and `backups` from the `UPLOAD_LOCATION` volume. It skips `thumbs` and `encoded-video` (regenerable) and **does not automatically include Immich external libraries**. To include external libraries, add a separate read-only mount and change `SOURCE_DIRS`/`MEDIA_ROOT`, or run an additional instance for those mounts.
 
@@ -215,10 +224,11 @@ The following variables configure the backup container. Defaults shown are those
 |---|---|---|
 | `SSH_PORT` | `22` | Port for rsync-over-SSH. |
 | `SSH_IDENTITY_FILE` | Empty | Path inside the container to an SSH private key, typically `/config/id_ed25519`. SSH requires a verified `/config/known_hosts` file. |
-| `RSYNC_SSH_PASSWORD_FILE` | Empty | Path inside the container to a file containing the SSH password. The password file is mounted read-only; `sshpass` uses it for SSH authentication. |
+| `RSYNC_SSH_PASSWORD` | Empty | SSH password supplied directly through the container environment. Use either this or `RSYNC_SSH_PASSWORD_FILE`, not both. Docker administrators can inspect container environment values; a file is preferable for sensitive passwords. |
+| `RSYNC_SSH_PASSWORD_FILE` | Empty | Path inside the container to a file containing the SSH password. The password file is mounted read-only; `sshpass` uses it for SSH authentication. Use either this or `RSYNC_SSH_PASSWORD`, not both. |
 | `RSYNC_DAEMON_PASSWORD_FILE` | Empty | Path inside the container to a password file for an rsync daemon module. |
 
-Store credentials in files under the mounted secrets/config directories instead of placing secret values directly in Compose environment variables.
+File-based credentials are mounted read-only through the secrets/config directories. Direct environment variables are available as alternatives, but Docker administrators can inspect container environment values; use files for better secret handling when practical.
 
 ### Immich database dump trigger
 
@@ -226,7 +236,8 @@ Store credentials in files under the mounted secrets/config directories instead 
 |---|---|---|
 | `TRIGGER_DB_BACKUP` | `false` | Ask Immich to create a fresh database dump before each backup run. Requires `REQUIRE_DB_BACKUP=true`. |
 | `IMMICH_API_URL` | Empty | Immich API base URL, including `/api`, such as `http://immich-server:2283/api`. Must be reachable from the sidecar. |
-| `IMMICH_API_KEY_FILE` | Empty | Path inside the container to a file containing an Immich administrator API key with permission to create jobs. |
+| `IMMICH_API_KEY` | Empty | Immich administrator API key with permission to create jobs, supplied in the container environment. Use either this or `IMMICH_API_KEY_FILE`, not both. Docker administrators can inspect environment values; a file is preferable for this secret. |
+| `IMMICH_API_KEY_FILE` | Empty | Path inside the container to a file containing the Immich API key. Use either this or `IMMICH_API_KEY`, not both. |
 | `DB_BACKUP_TRIGGER_TIMEOUT_SECONDS` | `1800` | How long to wait for the triggered dump file to appear and stop changing. Must be a positive integer. |
 
 ### Compose-only variables

@@ -24,7 +24,12 @@ setup_rsync() {
         [[ "$SSH_IDENTITY_FILE" =~ ^[A-Za-z0-9_./-]+$ ]] || die 'SSH_IDENTITY_FILE path contains unsupported characters.'
         sshcmd="$sshcmd -i $SSH_IDENTITY_FILE -o IdentitiesOnly=yes"
       fi
-      if [[ -n "${RSYNC_SSH_PASSWORD_FILE:-}" ]]; then
+      if [[ -n "${RSYNC_SSH_PASSWORD:-}" && -n "${RSYNC_SSH_PASSWORD_FILE:-}" ]]; then
+        die 'Set only one of RSYNC_SSH_PASSWORD or RSYNC_SSH_PASSWORD_FILE.'
+      elif [[ -n "${RSYNC_SSH_PASSWORD:-}" ]]; then
+        export SSHPASS="$RSYNC_SSH_PASSWORD"
+        sshcmd="sshpass -e $sshcmd"
+      elif [[ -n "${RSYNC_SSH_PASSWORD_FILE:-}" ]]; then
         [[ -f "$RSYNC_SSH_PASSWORD_FILE" ]] || die "SSH password file missing: $RSYNC_SSH_PASSWORD_FILE"
         [[ "$RSYNC_SSH_PASSWORD_FILE" =~ ^[A-Za-z0-9_./-]+$ ]] || die 'Password-file path contains unsupported characters.'
         sshcmd="sshpass -f $RSYNC_SSH_PASSWORD_FILE $sshcmd"

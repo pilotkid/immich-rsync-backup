@@ -8,7 +8,7 @@ This example combines the Immich stack from the provided baseline with this repo
 2. Copy `.env.example` to `.env`. Set absolute host paths and database credentials. Replace the sample EC2 host with your instance's current public DNS name and confirm the destination directory exists and is writable by the SSH user.
 3. Ensure the external Docker network `proxy-network` exists. Create it with `docker network create proxy-network` if needed.
 4. Create `backup-config` and `backup-secrets` beside this Compose file. Put the EC2 host key in `backup-config/known_hosts` after independently verifying its fingerprint. Put the EC2 private key in `backup-config/id_ed25519`; allow inbound SSH only from the backup host's public IP.
-5. Put an Immich administrator API key with job creation permission in `backup-secrets/immich-api-key`.
+5. Provide an Immich administrator API key with job creation permission either in `backup-secrets/immich-api-key` (set `IMMICH_API_KEY_FILE=/run/rsync-secrets/immich-api-key`) or through `IMMICH_API_KEY` in `.env`. Leave the unused option empty; do not set both. The file option is preferred because Docker administrators can inspect environment variables.
 
 Start the stack from this directory:
 
@@ -22,4 +22,4 @@ PowerShell equivalent, from this directory:
 docker compose up -d --build
 ```
 
-The Immich API key and EC2 private key are mounted read-only into the sidecar. Do not commit `.env`, `backup-secrets`, or real key files. Amazon S3 buckets do not provide an rsync-over-SSH endpoint; this example uses EC2 as the rsync host. Verify a small backup and restore before relying on this for important data.
+The EC2 private key is mounted read-only into the sidecar. The Immich API key and SSH password can be mounted as files or supplied through environment variables. Do not commit `.env`, `backup-secrets`, or real key files. Amazon S3 buckets do not provide an rsync-over-SSH endpoint; this example uses EC2 as the rsync host. Verify a small backup and restore before relying on this for important data.
